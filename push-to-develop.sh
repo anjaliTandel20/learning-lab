@@ -1,42 +1,40 @@
-#!/bin/bash
-# Automates staging, committing, and pushing to the develop branch
+#!/usr/bin/env bash
+set -e
 
-set -e  # Exit on any error
-
-BRANCH="develop"
+COMMIT_MESSAGE="${1:-}"
 
 # Ensure we're on the develop branch
 current_branch=$(git rev-parse --abbrev-ref HEAD)
-if [ "$current_branch" != "$BRANCH" ]; then
-  echo "Switching to $BRANCH branch..."
-  git checkout "$BRANCH"
+if [ "$current_branch" != "develop" ]; then
+    echo "Switching from '$current_branch' to 'develop'..."
+    git checkout develop
 fi
 
 # Check for changes
 if [ -z "$(git status --porcelain)" ]; then
-  echo "Nothing to commit. Working tree is clean."
-  exit 0
+    echo "No changes to commit. Exiting."
+    exit 0
 fi
 
-# Show what will be committed
-echo "=== Changes to be committed ==="
+# Show summary of changed files
+echo ""
+echo "Changed files:"
 git status --short
 
-# Prompt for commit message if not provided as argument
-if [ -n "$1" ]; then
-  COMMIT_MSG="$1"
-else
-  read -rp "Enter commit message: " COMMIT_MSG
-  if [ -z "$COMMIT_MSG" ]; then
-    echo "Commit message cannot be empty."
-    exit 1
-  fi
+# Prompt for commit message if not provided
+if [ -z "$COMMIT_MESSAGE" ]; then
+    read -rp $'\nEnter commit message: ' COMMIT_MESSAGE
 fi
 
-# Stage all changes, commit, and push
+if [ -z "$COMMIT_MESSAGE" ]; then
+    echo "Commit message cannot be empty. Exiting."
+    exit 1
+fi
+
+# Stage, commit, and push
 git add .
-git commit -m "$COMMIT_MSG"
-git push origin "$BRANCH"
+git commit -m "$COMMIT_MESSAGE"
+git push origin develop
 
 echo ""
-echo "Successfully pushed to $BRANCH."
+echo "Pushed to origin/develop successfully."

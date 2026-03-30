@@ -1,42 +1,40 @@
-# Automates staging, committing, and pushing to the develop branch
-
 param(
-    [string]$Message = ""
+    [string]$CommitMessage = ""
 )
 
-$BRANCH = "develop"
+$ErrorActionPreference = "Stop"
 
 # Ensure we're on the develop branch
 $currentBranch = git rev-parse --abbrev-ref HEAD
-if ($currentBranch -ne $BRANCH) {
-    Write-Host "Switching to $BRANCH branch..."
-    git checkout $BRANCH
+if ($currentBranch -ne "develop") {
+    Write-Host "Switching from '$currentBranch' to 'develop'..."
+    git checkout develop
 }
 
 # Check for changes
 $status = git status --porcelain
 if (-not $status) {
-    Write-Host "Nothing to commit. Working tree is clean."
+    Write-Host "No changes to commit. Exiting."
     exit 0
 }
 
-# Show what will be committed
-Write-Host "=== Changes to be committed ==="
+# Show summary of changed files
+Write-Host "`nChanged files:"
 git status --short
 
-# Prompt for commit message if not provided as argument
-if (-not $Message) {
-    $Message = Read-Host "Enter commit message"
-    if (-not $Message) {
-        Write-Host "Commit message cannot be empty."
-        exit 1
-    }
+# Prompt for commit message if not provided
+if (-not $CommitMessage) {
+    $CommitMessage = Read-Host "`nEnter commit message"
 }
 
-# Stage all changes, commit, and push
-git add .
-git commit -m $Message
-git push origin $BRANCH
+if (-not $CommitMessage) {
+    Write-Host "Commit message cannot be empty. Exiting."
+    exit 1
+}
 
-Write-Host ""
-Write-Host "Successfully pushed to $BRANCH."
+# Stage, commit, and push
+git add .
+git commit -m $CommitMessage
+git push origin develop
+
+Write-Host "`nPushed to origin/develop successfully."
