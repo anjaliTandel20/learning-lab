@@ -77,6 +77,9 @@ run(f"git push --set-upstream origin {current_branch}")
 
 # GitHub token from config
 token = GH_TOKEN
+if not token or not token.startswith("ghp_"):
+    print("GitHub token not found or invalid in config.py. Exiting.")
+    sys.exit(1)
 
 # Detect owner/repo from remote
 owner, repo = get_repo_info()
