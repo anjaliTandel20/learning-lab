@@ -6,19 +6,19 @@ import json
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import GH_TOKEN
+from config import GH_TOKEN, GH_REPO
 
-def run(cmd, capture=False):
-    result = subprocess.run(cmd, shell=True, capture_output=capture, text=True)
+BASE = "main"
+
+def run(cmd):
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
-        print(result.stderr.strip() if result.stderr else "Command failed.")
+        print(result.stderr.strip())
         sys.exit(1)
-    return result.stdout.strip() if capture else None
+    return result.stdout.strip()
 
-def get_repo_info():
-    remote = run("git remote get-url origin", capture=True)
-    # Handles both https://github.com/owner/repo.git and git@github.com:owner/repo.git
-    remote = remote.replace(".git", "")
+def get_owner():
+    remote = run("git remote get-url origin").replace(".git", "")
     if "github.com/" in remote:
         parts = remote.split("github.com/")[-1]
     elif "github.com:" in remote:
@@ -26,17 +26,15 @@ def get_repo_info():
     else:
         print("Could not detect GitHub repo from remote URL.")
         sys.exit(1)
-    owner, repo = parts.strip("/").split("/")
-    return owner, repo
+    return parts.strip("/").split("/")[0]
 
-def create_pr(token, owner, repo, head, base, title, body):
-    url = f"https://api.github.com/repos/{owner}/{repo}/pulls"
-    data = json.dumps({"title": title, "body": body, "head": head, "base": base}).encode()
+def create_pr(owner, head, title, body=""):
+    url = f"https://api.github.com/repos/{owner}/{GH_REPO}/pulls"
+    data = json.dumps({"title": title, "body": body, "head": head, "base": BASE}).encode()
     req = urllib.request.Request(
-        url,
-        data=data,
+        url, data=data,
         headers={
-            "Authorization": f"token {token}",
+            "Authorization": f"token {GH_TOKEN}",
             "Accept": "application/vnd.github+json",
             "Content-Type": "application/json"
         },
@@ -44,59 +42,38 @@ def create_pr(token, owner, repo, head, base, title, body):
     )
     try:
         with urllib.request.urlopen(req) as res:
-            pr = json.loads(res.read())
-            return pr["html_url"]
+            return json.loads(res.read())["html_url"]
     except urllib.error.HTTPError as e:
         error = json.loads(e.read())
-        print(f"GitHub API error: {error.get('message', str(e))}")
+        msg = error.get("message", str(e))
+        if "already exists" in msg:
+            print(f"A PR already exists for this branch.")
+            sys.exit(0)
+        print(f"GitHub API error: {msg}")
         sys.exit(1)
 
-BASE = "main"
-
-# Get current branch
-current_branch = run("git rev-parse --abbrev-ref HEAD", capture=True)
+# Current branch
+current_branch = run("git rev-parse --abbrev-ref HEAD")
 
 if current_branch == BASE:
     print(f"You are on '{BASE}'. Switch to your feature or develop branch first.")
     sys.exit(1)
 
-# Check for uncommitted changes
-status = run("git status --porcelain", capture=True)
-if status:
-    print("\nUncommitted changes detected:")
-    run("git status --short")
-    commit_msg = input("\nEnter commit message to commit changes (or press Enter to skip): ").strip()
-    if commit_msg:
-        run("git add .")
-        run(f'git commit -m "{commit_msg}"')
-        print("Changes committed.")
+# Use last commit message as PR title automatically
+pr_title = run("git log -1 --pretty=%s")
 
-# Push branch
-print(f"\nPushing '{current_branch}' to origin...")
-run(f"git push --set-upstream origin {current_branch}")
+print(f"\nBranch : {current_branch}")
+print(f"Base   : {BASE}")
+print(f"Title  : {pr_title}")
 
-# GitHub token from config
-token = GH_TOKEN
-if not token or not token.startswith("ghp_"):
-    print("GitHub token not found or invalid in config.py. Exiting.")
-    sys.exit(1)
-
-# Detect owner/repo from remote
-owner, repo = get_repo_info()
-print(f"Repo detected: {owner}/{repo}")
-
-# PR title
-pr_title = input("\nEnter PR title: ").strip()
-if not pr_title:
-    print("PR title cannot be empty. Exiting.")
-    sys.exit(1)
-
-# PR body
-pr_body = input("Enter PR body (optional, press Enter to skip): ").strip()
+confirm = input("\nCreate PR with above details? (Enter to confirm / type new title to change): ").strip()
+if confirm:
+    pr_title = confirm
 
 # Create PR
+owner = get_owner()
 print(f"\nCreating PR: '{current_branch}' -> '{BASE}'")
-pr_url = create_pr(token, owner, repo, current_branch, BASE, pr_title, pr_body)
+pr_url = create_pr(owner, current_branch, pr_title)
 
 print(f"\nPull request created successfully.")
 print(f"URL: {pr_url}")
